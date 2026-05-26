@@ -7,3 +7,4 @@ models/*.bin
 
 # 临时文件
 *.tmp
+*.txt
