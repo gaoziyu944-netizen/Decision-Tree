@@ -1,17 +1,9 @@
 # 编译产物
 *.o
-*.exe
 robot_rf
-robot_rf_debug
-
+*.exe
 # 模型文件
 models/*.bin
 
-# 日志文件
-logs/*.log
-
 # 临时文件
 *.tmp
-*.swp
-*~
-.DS_Store
