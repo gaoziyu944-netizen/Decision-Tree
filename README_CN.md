@@ -11,6 +11,9 @@
 - 读取 CSV 格式的训练集和测试集
 - 使用 Bootstrap 采样训练多棵 CART 决策树
 - 使用随机森林投票预测机器人动作
+- 支持从 CSV 批量预测动作
+- 支持控制台交互输入单条传感器数据并预测动作
+- 支持通过命令行参数直接预测单条传感器数据
 - 支持模型保存和加载
 - 支持测试集评估，输出准确率、混淆矩阵、Precision、Recall 和 F1
 - 支持统计特征重要性
@@ -115,6 +118,49 @@ Windows PowerShell：
 
 预测结果会保存到 `output.csv`，其中包含预测动作和每个动作类别的概率。
 
+### 交互式输入单条数据
+
+```bash
+./robot_rf input models/robot_model.bin
+```
+
+Windows PowerShell：
+
+```powershell
+.\robot_rf.exe input models/robot_model.bin
+```
+
+程序会提示你依次输入：
+
+```text
+dist_front
+dist_left
+dist_right
+speed
+```
+
+输入完成后，程序会输出预测动作和每个动作类别的概率。
+
+### 命令行预测单条数据
+
+```bash
+./robot_rf single models/robot_model.bin 55.9 47.9 86.9 33.3
+```
+
+Windows PowerShell：
+
+```powershell
+.\robot_rf.exe single models/robot_model.bin 55.9 47.9 86.9 33.3
+```
+
+四个数字依次表示：
+
+```text
+dist_front dist_left dist_right speed
+```
+
+该模式适合快速测试一组传感器输入，不需要准备 CSV 文件。
+
 ### 评估模型
 
 ```bash
@@ -176,5 +222,7 @@ Windows PowerShell：
 
 - `data/train.csv` 和 `data/test.csv` 的最后一列必须是动作标签
 - 如果只是预测无标签数据，当前代码仍会读取最后一列作为标签，建议保持 CSV 列格式一致
+- `input` 和 `single` 模式只预测一条样本，不需要 CSV 文件
+- `single` 模式必须按顺序提供 4 个传感器数值：`dist_front dist_left dist_right speed`
 - 训练生成的模型文件默认保存到 `models/robot_model.bin`
 - Windows 下编译产物通常为 `.exe` 文件
