@@ -1,4 +1,4 @@
-// main.c - 命令行入口，支持 train / predict / evaluate / features 四种模式
+// main.c - 命令行入口，支持 train / predict / input / single / evaluate / features 六种模式
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,11 +19,15 @@ static void print_usage(void) {
     printf("Usage:\n");
     printf("  robot_rf train <data.csv> <model_output.bin>\n");
     printf("  robot_rf predict <model.bin> <data.csv> [output.csv]\n");
+    printf("  robot_rf input <model.bin>\n");
+    printf("  robot_rf single <model.bin> <dist_front> <dist_left> <dist_right> <speed>\n");
     printf("  robot_rf evaluate <model.bin> <test.csv>\n");
     printf("  robot_rf features <model.bin>\n\n");
     printf("Modes:\n");
     printf("  train    - Train model on CSV data and save to file\n");
     printf("  predict  - Load model and predict actions from CSV data\n");
+    printf("  input    - Type sensor values in the console and predict one action\n");
+    printf("  single   - Predict one action from command-line sensor values\n");
     printf("  evaluate - Evaluate model on labeled test data with metrics\n");
     printf("  features - Display model feature importance\n\n");
     printf("Config (config.h):\n");
@@ -156,6 +160,92 @@ static int do_predict(const char *model_file, const char *data_file,
     // 关闭文件并释放内存
     fclose(out);
     dataset_free(ds);
+    rf_free(rf);
+    return 0;
+}
+
+static int print_single_prediction(RandomForest *rf, double sample[N_FEATURES]) {
+    int c;
+    // 对单条传感器样本进行预测，pred 是最终投票得到的动作类别
+    int pred = rf_predict(rf, sample);
+    // 获取每个动作类别的预测概率，便于观察模型不确定性
+    double *probs = rf_predict_proba(rf, sample);
+    const char *name = (pred >= 0 && pred < N_CLASSES) ? action_names[pred] : "UNKNOWN";
+
+    // 打印最终预测动作
+    printf("\nPredicted action: %s (%d)\n", name, pred);
+    printf("Probabilities:\n");
+    // 逐类打印概率，概率由随机森林中投票给该类的树占比得到
+    for (c = 0; c < rf->n_classes; c++) {
+        const char *class_name = (c >= 0 && c < N_CLASSES) ? action_names[c] : "UNKNOWN";
+        printf("  %s: %.2f%%\n", class_name, probs[c] * 100.0);
+    }
+
+    // rf_predict_proba 返回动态分配的数组，打印完成后必须释放
+    free(probs);
+    return pred;
+}
+
+static int do_input(const char *model_file) {
+    RandomForest *rf;
+    double sample[N_FEATURES];
+
+    // 交互式预测流程：加载模型 -> 从控制台读取 4 个传感器值 -> 输出预测动作
+    printf("Loading model from: %s\n", model_file);
+    rf = rf_load(model_file);
+    if (!rf) {
+        fprintf(stderr, "Error: cannot load model %s\n", model_file);
+        return 1;
+    }
+
+    printf("Enter sensor values:\n");
+    // 依次读取前方距离、左侧距离、右侧距离和速度
+    printf("  dist_front: ");
+    if (scanf("%lf", &sample[0]) != 1) goto input_error;
+    printf("  dist_left: ");
+    if (scanf("%lf", &sample[1]) != 1) goto input_error;
+    printf("  dist_right: ");
+    if (scanf("%lf", &sample[2]) != 1) goto input_error;
+    printf("  speed: ");
+    if (scanf("%lf", &sample[3]) != 1) goto input_error;
+
+    // 复用单样本预测输出函数
+    print_single_prediction(rf, sample);
+    rf_free(rf);
+    return 0;
+
+input_error:
+    // 任意一个输入不是合法数字时，跳转到这里统一处理错误和释放内存
+    fprintf(stderr, "Error: invalid sensor value\n");
+    rf_free(rf);
+    return 1;
+}
+
+static int do_single(const char *model_file, char *argv[]) {
+    RandomForest *rf;
+    double sample[N_FEATURES];
+    int i;
+
+    // 命令行单样本预测：从 argv 中解析 4 个传感器数值
+    for (i = 0; i < N_FEATURES; i++) {
+        char *endptr = NULL;
+        sample[i] = strtod(argv[i], &endptr);
+        // endptr 用来检查整个字符串是否都被成功解析为数字
+        if (endptr == argv[i] || *endptr != '\0') {
+            fprintf(stderr, "Error: invalid sensor value: %s\n", argv[i]);
+            return 1;
+        }
+    }
+
+    // 加载模型后，对解析出的单条样本执行预测
+    printf("Loading model from: %s\n", model_file);
+    rf = rf_load(model_file);
+    if (!rf) {
+        fprintf(stderr, "Error: cannot load model %s\n", model_file);
+        return 1;
+    }
+
+    print_single_prediction(rf, sample);
     rf_free(rf);
     return 0;
 }
@@ -351,6 +441,20 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         return do_predict(argv[2], argv[3], argc > 4 ? argv[4] : NULL);
+    }
+    else if (strcmp(argv[1], "input") == 0) {
+        if (argc < 3) {
+            printf("Usage: robot_rf input <model.bin>\n");
+            return 1;
+        }
+        return do_input(argv[2]);
+    }
+    else if (strcmp(argv[1], "single") == 0) {
+        if (argc < 7) {
+            printf("Usage: robot_rf single <model.bin> <dist_front> <dist_left> <dist_right> <speed>\n");
+            return 1;
+        }
+        return do_single(argv[2], &argv[3]);
     }
     else if (strcmp(argv[1], "evaluate") == 0) {
         if (argc < 4) {
